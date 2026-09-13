@@ -79,10 +79,17 @@ def main():
               "|---|---|---|---|---|---|"]
         base = next((r for r in bench["rows"] if r["device"].startswith("PyTorch")), None)
         for r in bench["rows"]:
+            if not r.get("supported", True) or r["p50_ms"] <= 0:
+                L.append(f"| {r['device']} | {r['precision'].upper()} | — | — | — | "
+                         f"not supported |")
+                continue
             L.append(f"| {r['device']} | {r['precision'].upper()} | {r['p50_ms']:.2f} | "
                      f"{r['p99_ms']:.2f} | {r['fps']:.1f} | {r['control_hz']:.1f} |")
         if base:
-            best = min((r for r in bench["rows"] if not r["device"].startswith("PyTorch")),
+            # unsupported rows carry p50 = 0; they are not candidates for "best"
+            best = min((r for r in bench["rows"]
+                        if not r["device"].startswith("PyTorch")
+                        and r.get("supported", True) and r["p50_ms"] > 0),
                        key=lambda r: r["p50_ms"], default=None)
             if best:
                 L += ["", f"- best OpenVINO configuration: **{best['device']} "

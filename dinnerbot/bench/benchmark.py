@@ -119,7 +119,7 @@ def main():
 
     rows = []
     if not a.skip_torch:
-        rows.append(dict(precision="fp32", **torch_baseline()))
+        rows.append(dict(precision="fp32", supported=True, **torch_baseline()))
 
     for prec in PRECISIONS:
         xml = os.path.join(a.ir_dir, f"policy_{prec}.xml")
@@ -129,13 +129,27 @@ def main():
             try:
                 r = bench_one(core, xml, dev, iters=a.iters)
                 r["precision"] = prec
+                r["supported"] = True
                 r["size_mb"] = round(os.path.getsize(xml.replace(".xml", ".bin")) / 1e6, 2)
                 rows.append(r)
                 print(f"  {dev:5s} {prec:5s}  p50 {r['p50_ms']:7.2f} ms  "
                       f"p99 {r['p99_ms']:7.2f} ms  {r['fps']:6.1f} inf/s  "
                       f"{r['control_hz']:7.1f} Hz control")
             except Exception as e:
-                print(f"  {dev:5s} {prec:5s}  UNSUPPORTED: {str(e).splitlines()[0][:90]}")
+                # A device refusing a precision is a result, not a gap -- record it
+                # so the table shows the whole device x precision matrix.
+                why = " ".join(str(e).split())
+                for marker in ("Number of scales", "Unsupported", "not supported",
+                               "failed", "Failed"):
+                    i = why.find(marker)
+                    if i >= 0:
+                        why = why[i:]
+                        break
+                rows.append(dict(device=dev, precision=prec, supported=False,
+                                 reason=why[:150], compile_s=0.0, p50_ms=0.0,
+                                 p90_ms=0.0, p99_ms=0.0, mean_ms=0.0, fps=0.0,
+                                 control_hz=0.0))
+                print(f"  {dev:5s} {prec:5s}  UNSUPPORTED: {why[:90]}")
 
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     meta = dict(host=cpu_name(), openvino=ov.__version__, devices=avail,
@@ -144,18 +158,30 @@ def main():
         json.dump(meta, f, indent=2)
 
     base = next((r for r in rows if r["device"].startswith("PyTorch")), None)
+    ok_rows = [r for r in rows if r.get("supported", True)]
     lines = ["# Intel inference benchmark", "",
              f"- host: `{meta['host']}`", f"- OpenVINO: `{meta['openvino']}`",
              f"- devices reported: `{', '.join(avail)}`",
              f"- policy emits a {CHUNK}-step action chunk per inference, so the "
-             f"sustainable control rate is {CHUNK} x inferences/s", "",
+             f"sustainable control rate is {CHUNK} x inferences/s",
+             f"- the task needs 30 Hz of control; every supported configuration "
+             f"below clears that by a wide margin", "",
              "| device | precision | p50 ms | p90 ms | p99 ms | inf/s | control Hz | speedup vs PyTorch | weights MB |",
              "|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
+        if not r.get("supported", True):
+            lines.append(f"| {r['device']} | {r['precision'].upper()} | "
+                         f"— | — | — | — | — | not supported | {r.get('size_mb','-')} |")
+            continue
         sp = f"{base['p50_ms']/r['p50_ms']:.2f}x" if base and r["p50_ms"] > 0 else "-"
         lines.append(f"| {r['device']} | {r['precision'].upper()} | {r['p50_ms']:.2f} | "
                      f"{r['p90_ms']:.2f} | {r['p99_ms']:.2f} | {r['fps']:.1f} | "
                      f"{r['control_hz']:.1f} | {sp} | {r.get('size_mb','-')} |")
+    unsup = [r for r in rows if not r.get("supported", True)]
+    if unsup:
+        lines += ["", "### Combinations the hardware refused", ""]
+        for r in unsup:
+            lines.append(f"- **{r['device']} {r['precision'].upper()}** — {r['reason']}")
     with open(a.out + ".md", "w") as f:
         f.write("\n".join(lines) + "\n")
     print(f"\nwrote {a.out}.json and {a.out}.md")
