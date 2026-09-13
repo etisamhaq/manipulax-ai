@@ -124,8 +124,14 @@ def approach_for(arm: str, target_xy, tilt_deg: float = 22.0):
     return a / np.linalg.norm(a)
 
 
-def _fk_err(self, data, q, pos, approach):
-    """Position error (m) + 0.02*angle error (deg) for a candidate solution."""
+def _fk_err(self, data, q, pos, approach, want_deg=None):
+    """Score a candidate: position error (m) plus small orientation penalties.
+
+    The downward-preference term exists because a gripper that rolls over drops
+    what it is holding.  But when a large tilt is *deliberately* requested --
+    tipping a bottle to pour -- that same term overrules the request, so the
+    threshold follows what was asked for rather than being fixed at 45 deg.
+    """
     s = mujoco.MjData(self.m)
     s.qpos[:] = data.qpos
     s.qpos[self.qpos_ids] = q
@@ -134,8 +140,19 @@ def _fk_err(self, data, q, pos, approach):
     a = s.xmat[self.body].reshape(3, 3) @ self.approach_local
     ang = np.degrees(np.arccos(np.clip(float(a @ approach), -1, 1)))
     down = np.degrees(np.arccos(np.clip(float(-a[2]), -1, 1)))
-    # prefer accurate position, a downward-ish gripper, and a small residual
-    return float(np.linalg.norm(p - pos)) + 0.0004 * ang + 0.0006 * max(0.0, down - 45.0)
+    allow = 45.0 if want_deg is None else max(45.0, float(want_deg) + 12.0)
+    return float(np.linalg.norm(p - pos)) + 0.0004 * ang + 0.0006 * max(0.0, down - allow)
+
+
+def _down_angle(self, data, q):
+    """Angle (deg) between the gripper's approach axis and straight down."""
+    s = mujoco.MjData(self.m)
+    s.qpos[:] = data.qpos
+    s.qpos[self.qpos_ids] = q
+    mujoco.mj_kinematics(self.m, s)
+    a = s.xmat[self.body].reshape(3, 3) @ self.approach_local
+    return float(np.degrees(np.arccos(np.clip(float(-a[2]), -1, 1))))
 
 
 ArmIK.fk_err = _fk_err
+ArmIK.down_angle = _down_angle

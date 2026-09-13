@@ -46,9 +46,9 @@ class SceneParams:
     # geometry
     plate_r: float = 0.038
     plate_h: float = 0.005
-    mug_r: float = 0.021
-    mug_h: float = 0.045
-    mug_wall: float = 0.0028
+    mug_r: float = 0.032
+    mug_h: float = 0.050
+    mug_wall: float = 0.0030
     fork_len: float = 0.070
     fork_w: float = 0.020
     bottle_r: float = 0.018
@@ -63,7 +63,7 @@ class SceneParams:
     drawer_damping: float = 1.8
     # initial poses  (x, y, yaw)
     plate_pose: tuple = (0.235, -0.06, 0.0)
-    mug_pose: tuple = (-0.265, -0.01, 0.0)
+    mug_pose: tuple = (-0.378, -0.005, 0.0)
     bottle_pose: tuple = (0.275, 0.035, 0.0)
     fork_in_drawer: float = 0.016      # lateral offset of the fork inside drawer
     spoon_in_drawer: float = -0.016
@@ -91,8 +91,8 @@ def randomize(seed: int, level: float = 1.0) -> SceneParams:
 
     # --- object shape -------------------------------------------------
     p.plate_r = 0.038 * (1 + s * u(-0.13, 0.13))
-    p.mug_r = 0.021 * (1 + s * u(-0.12, 0.16))
-    p.mug_h = 0.045 * (1 + s * u(-0.15, 0.15))
+    p.mug_r = 0.032 * (1 + s * u(-0.10, 0.12))
+    p.mug_h = 0.050 * (1 + s * u(-0.12, 0.12))
     p.fork_len = 0.070 * (1 + s * u(-0.12, 0.12))
     p.bottle_r = 0.018 * (1 + s * u(-0.10, 0.10))
 
@@ -110,7 +110,7 @@ def randomize(seed: int, level: float = 1.0) -> SceneParams:
     # half; the fork is the exception -- it starts on the right but belongs on
     # the left of the mat, which is what forces the arm-to-arm hand-off.
     p.plate_pose = (u(0.200, 0.270), u(-0.10, -0.02), u(-0.5, 0.5) * s)
-    p.mug_pose = (u(-0.300, -0.235), u(-0.05, 0.03), u(-3.1, 3.1) * s)
+    p.mug_pose = (u(-0.400, -0.355), u(-0.04, 0.03), u(-3.1, 3.1) * s)
     p.bottle_pose = (u(0.250, 0.305), u(0.005, 0.065), u(-3.1, 3.1) * s)
     p.fork_in_drawer = u(0.008, 0.024)
     p.spoon_in_drawer = u(-0.024, -0.008)
