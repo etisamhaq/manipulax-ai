@@ -1,0 +1,32 @@
+[
+  {
+    "precision": "FP32",
+    "mae_rad": 1.8748015406799823e-07,
+    "mae_mrad": 0.0,
+    "p99_mrad": 0.001,
+    "max_mrad": 0.002,
+    "mae_norm": 0.0,
+    "frac_of_signal": 0.0,
+    "size_mb": 3.9
+  },
+  {
+    "precision": "FP16",
+    "mae_rad": 0.3914766311645508,
+    "mae_mrad": 391.477,
+    "p99_mrad": 2141.407,
+    "max_mrad": 3233.06,
+    "mae_norm": 0.4501,
+    "frac_of_signal": 0.4592,
+    "size_mb": 1.95
+  },
+  {
+    "precision": "INT8",
+    "mae_rad": 0.05663679912686348,
+    "mae_mrad": 56.637,
+    "p99_mrad": 378.106,
+    "max_mrad": 661.591,
+    "mae_norm": 0.0743,
+    "frac_of_signal": 0.0758,
+    "size_mb": 1.2
+  }
+]

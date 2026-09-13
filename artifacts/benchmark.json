@@ -1,0 +1,59 @@
+{
+  "host": "Intel(R) Core(TM) Ultra 7 155H",
+  "openvino": "2026.3.1-22476-759c5a6ab8c-releases/2026/3",
+  "devices": [
+    "CPU"
+  ],
+  "chunk": 16,
+  "image": 96,
+  "cameras": 3,
+  "rows": [
+    {
+      "precision": "fp32",
+      "device": "PyTorch-CPU (baseline)",
+      "compile_s": 0.0,
+      "p50_ms": 5.853,
+      "p90_ms": 10.731,
+      "p99_ms": 17.88,
+      "mean_ms": 7.18,
+      "fps": 170.9,
+      "control_hz": 2733.9
+    },
+    {
+      "device": "CPU",
+      "compile_s": 0.237,
+      "p50_ms": 2.042,
+      "p90_ms": 2.154,
+      "p99_ms": 2.597,
+      "mean_ms": 2.066,
+      "fps": 489.8,
+      "control_hz": 7837.1,
+      "precision": "fp32",
+      "size_mb": 3.9
+    },
+    {
+      "device": "CPU",
+      "compile_s": 0.21,
+      "p50_ms": 2.06,
+      "p90_ms": 2.257,
+      "p99_ms": 2.761,
+      "mean_ms": 2.072,
+      "fps": 485.6,
+      "control_hz": 7768.9,
+      "precision": "fp16",
+      "size_mb": 1.95
+    },
+    {
+      "device": "CPU",
+      "compile_s": 0.388,
+      "p50_ms": 1.616,
+      "p90_ms": 1.684,
+      "p99_ms": 1.816,
+      "mean_ms": 1.617,
+      "fps": 619.0,
+      "control_hz": 9903.4,
+      "precision": "int8",
+      "size_mb": 1.2
+    }
+  ]
+}
