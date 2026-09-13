@@ -1,0 +1,12 @@
+mujoco>=3.2
+numpy
+scipy
+imageio
+imageio-ffmpeg
+opencv-python-headless
+torch>=2.2
+openvino>=2025.0
+nncf>=2.14
+# planner (optional; the rules backend works without these)
+optimum-intel[openvino]
+transformers==4.57.1
