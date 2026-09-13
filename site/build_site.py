@@ -424,8 +424,8 @@ footer a{{color:var(--dim)}}
     os.makedirs(DIST, exist_ok=True)
     with open(os.path.join(DIST, "index.html"), "w") as f:
         f.write(html)
-    for src, dst in (("/tmp/hero.mp4", "hero.mp4"), ("/tmp/poster.jpg", "poster.jpg"),
-                     ("/tmp/full_run.mp4", "full_run.mp4")):
+    for src, dst in (("/tmp/seed4.mp4", "seed4.mp4"), ("/tmp/hero.mp4", "hero.mp4"),
+                     ("/tmp/poster.jpg", "poster.jpg")):
         if os.path.exists(src) and not os.path.exists(os.path.join(DIST, dst)):
             shutil.copy(src, os.path.join(DIST, dst))
     print("wrote", os.path.join(DIST, "index.html"),
