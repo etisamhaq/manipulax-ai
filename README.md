@@ -1,7 +1,5 @@
 # ManipulaX — Bimanual VLA Manipulation with Multi-Modal Reasoning
 
-Intel Physical AI Online Challenge · *Setting Up a Dinner Table* · simulation-first
-
 Two simulated **SO-ARM100/SO-101** arms set a dinner table in MuJoCo from a
 natural-language instruction. A vision-language planner turns the sentence and
 the overhead camera view into a validated bimanual plan; a language-conditioned
