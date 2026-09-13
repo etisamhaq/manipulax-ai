@@ -268,7 +268,7 @@ class DinnerTableEnv:
         up = R @ np.array([0.0, 0.0, 1.0])
         tilt = np.degrees(np.arccos(np.clip(up[2], -1, 1)))
         self._pour_cool = max(0, self._pour_cool - 1)
-        if tilt > 45.0 and spout[2] > 0.03 and self._water_free and self._pour_cool == 0:
+        if tilt > 55.0 and spout[2] > 0.03 and self._water_free and self._pour_cool == 0:
             i = self._water_free.pop(0)
             adr, dadr = self._water_adr[i], self._water_dadr[i]
             self.data.qpos[adr:adr + 3] = spout + np.array([0, 0, -0.006])
@@ -276,7 +276,7 @@ class DinnerTableEnv:
             self.data.qvel[dadr:dadr + 6] = 0.0
             self.data.qvel[dadr + 2] = -0.05
             self._water_out.append(i)
-            self._pour_cool = 6
+            self._pour_cool = 26
 
     def water_in_mug(self):
         if not self._water_out:

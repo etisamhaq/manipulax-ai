@@ -30,7 +30,8 @@ GRASP_CFG = {
 }
 
 
-def solve_best(ik: ArmIK, data, arm, pos, q_init=None, tilts=TILTS):
+def solve_best(ik: ArmIK, data, arm, pos, q_init=None, tilts=TILTS,
+               max_down_deg=None):
     """Try several wrist tilts from several seeds; keep the cleanest solution.
 
     Multi-start matters after a hand-off: the taker ends up in a contorted
@@ -47,16 +48,30 @@ def solve_best(ik: ArmIK, data, arm, pos, q_init=None, tilts=TILTS):
     alt[2] *= 0.6
     seeds.append(alt)
 
+    # `max_down_deg` is a hard gate, not a penalty.  Carrying an open bottle,
+    # any solution that rolls the gripper past ~40 deg from vertical tips the
+    # bottle -- and because the bottle is welded to the jaw, it empties itself
+    # in mid-air before the arm ever arrives.  Multi-start IK makes those
+    # elbow-flipped solutions *more* likely, so they have to be excluded
+    # outright rather than merely discouraged.
     best, bscore = None, np.inf
+    gated, gscore = None, np.inf
     for seed in seeds:
         for t in tilts:
             ap = approach_for(arm, pos, t)
             q, _ = ik.solve(data, pos, ap, q_init=seed)
-            sc = ik.fk_err(data, q, pos, ap)
+            sc = ik.fk_err(data, q, pos, ap, want_deg=t)
             if sc < bscore:
                 best, bscore = q, sc
-        if bscore < 0.004:        # good enough -- do not pay for more seeds
+            if max_down_deg is not None and ik.down_angle(data, q) <= max_down_deg:
+                if sc < gscore:
+                    gated, gscore = q, sc
+        if max_down_deg is None and bscore < 0.004:
             break
+        if max_down_deg is not None and gscore < 0.004:
+            break
+    if max_down_deg is not None and gated is not None:
+        return gated, gscore
     return best, bscore
 
 
@@ -126,7 +141,8 @@ class Executor:
         q[5] = value
         self.move({arm: q}, steps=steps, settle=3)
 
-    def reach(self, arm, pos, steps=45, jaw=None, refine=1, tol=0.008, tilts=TILTS):
+    def reach(self, arm, pos, steps=45, jaw=None, refine=1, tol=0.008, tilts=TILTS,
+              max_down_deg=None):
         """Move the TCP to `pos`.  The position servos droop by a few centimetres
         under load, so after the first move we measure the real TCP and re-aim at
         an over-corrected target.  One refinement pass removes most of the error."""
@@ -136,7 +152,8 @@ class Executor:
         for k in range(refine + 1):
             q0 = self.ctrl_of(arm)
             q5, err = solve_best(self.ik[arm], self.env.data, arm, target,
-                                 q_init=q0[:5], tilts=tilts)
+                                 q_init=q0[:5], tilts=tilts,
+                                 max_down_deg=max_down_deg)
             q = np.concatenate([q5, [q0[5] if jaw is None else jaw]])
             self.move({arm: q}, steps=steps if k == 0 else max(12, steps // 3))
             resid = pos - self.env.tcp(arm)
@@ -178,7 +195,9 @@ class Executor:
         if e.held[arm] != obj:
             return False
         up = e.body_pos(obj)
-        self.reach(arm, [up[0], up[1], max(lift, up[2] + 0.08)], steps=36, tilts=tl)
+        # an open bottle must stay upright once it leaves the table
+        self.reach(arm, [up[0], up[1], max(lift, up[2] + 0.08)], steps=36, tilts=tl,
+                   max_down_deg=35.0 if obj == "bottle" else None)
         return e.held[arm] == obj
 
     def grasp_offset(self, arm):
@@ -301,54 +320,117 @@ class Executor:
     def spout(self):
         return self.env.data.site("spout").xpos.copy()
 
-    def pour(self, arm, over_xy, hold_steps=110, tilt_target=50.0):
+    def aim_spout(self, arm, target, iters=3, tol=0.010, tilts=(8.0, 16.0, 28.0, 40.0)):
+        """Servo the bottle's spout to a 3-D point by moving the tool point.
+
+        The spout is ~10 cm from the tool frame and swings as the wrist pitches,
+        so commanding the jaw to a position says very little about where the
+        liquid will actually go.  This closes the loop on the spout itself.
+        """
+        env = self.env
+        for _ in range(iters):
+            err = np.asarray(target, float) - self.spout()
+            if np.linalg.norm(err) < tol:
+                return True
+            tcp = env.tcp(arm)
+            self.reach(arm, tcp + np.clip(err, -0.07, 0.07), steps=14, refine=1,
+                       tol=0.008, tilts=tilts)
+        return float(np.linalg.norm(np.asarray(target, float) - self.spout())) < tol * 2
+
+    def pour_target(self, extra_height=0.045):
+        """Where the spout should sit: just above the mug's rim, centred."""
+        mug = self.env.body_pos("mug")
+        return np.array([mug[0], mug[1], mug[2] + self.env.params.mug_h + extra_height])
+
+    def catch_with_mug(self, mug_arm, target_xy, tol=0.010):
+        """Bring the held mug under a point, using the arm that holds it.
+
+        Aiming the bottle is a 5-DoF problem tangled up with the tilt; moving
+        the mug is a plain position move with a free arm, so when the stream is
+        off target it is much cheaper to move the cup than the bottle.
+        """
+        env = self.env
+        if env.held[mug_arm] != "mug":
+            return False
+        err = np.asarray(target_xy, float)[:2] - env.body_pos("mug")[:2]
+        if np.linalg.norm(err) < tol:
+            return True
+        tcp = env.tcp(mug_arm)
+        self.reach(mug_arm, [tcp[0] + float(np.clip(err[0], -0.06, 0.06)),
+                             tcp[1] + float(np.clip(err[1], -0.06, 0.06)), tcp[2]],
+                   steps=12, refine=0)
+        return float(np.linalg.norm(np.asarray(target_xy, float)[:2]
+                                    - env.body_pos("mug")[:2])) < tol * 2
+
+    def pour_hold(self, arm, steps, mug_tol=0.010):
+        """Hold the pour, re-aiming the spout over the mug as it empties.
+
+        Particles leave the spout one at a time over the whole hold, so aiming
+        once at the start wastes most of them -- the bottle drifts as it lightens
+        and the arm settles.  Re-centring during the hold is what turns a
+        one-drop pour into most of the bottle.
+        """
+        env = self.env
+        other = "left" if arm == "right" else "right"
+        chunk = 10
+        for _ in range(max(1, steps // chunk)):
+            self.hold(chunk)
+            sp = self.spout()
+            # cheapest correction first: slide the cup under the stream
+            if not self.catch_with_mug(other, sp[:2], tol=0.012):
+                tgt = self.pour_target()
+                if np.linalg.norm(tgt - sp) > mug_tol:
+                    self.aim_spout(arm, tgt, iters=1, tol=mug_tol)
+
+    def pour(self, arm, over_xy, hold_steps=180, tilt_target=55.0):
         """Tip the held bottle so its spout empties into the mug.
 
-        Two things have to be true at once and they fight each other: the bottle
-        must be tilted past ~55 deg, and its *spout* -- not the gripper -- must
-        be over the mug.  Rolling the wrist spins the bottle about its own axis
-        and tips nothing, so the tilt comes from wrist pitch; but pitching swings
-        the spout several centimetres sideways.  So we pitch in small steps and
-        after each one re-aim the arm to bring the spout back over the mug.
+        Three things fought each other here and the order of operations is the
+        whole trick:
+
+        * Wrist *roll* spins the bottle about its own axis and pours nothing --
+          the tilt has to come from the gripper's approach angle.
+        * Positioning and tilting compete for the same five joints, so servoing
+          the spout onto the mug re-solves the wrist and undoes any pitch that
+          was commanded directly.  Asking IK for a tilted *approach* lets it
+          solve both together instead.
+        * A tipped bottle pours wherever it points, so it must arrive over the
+          mug before it is tilted, and the spout -- not the jaw, which is ~10 cm
+          away -- is what has to be aimed.
+
+        So: transit upright-ish, then walk the requested approach angle up until
+        the bottle passes the pouring angle with its spout still on target.
         """
         env = self.env
         over_xy = np.asarray(over_xy, float)[:2]
-        self.reach(arm, [over_xy[0], over_xy[1], 0.19], steps=50, tilts=(6.0, 12.0, 20.0))
+        if not env._water_free:
+            return False                      # nothing left to pour
 
-        lo, hi = self.ik[arm].lo[3], self.ik[arm].hi[3]
-        best = (self.bottle_tilt(), self.ctrl_of(arm).copy())
-        for direction in (+1.0, -1.0):
-            q = self.ctrl_of(arm).copy()
-            start = q[3]
-            for k in range(1, 9):
-                q = self.ctrl_of(arm).copy()
-                q[3] = float(np.clip(start + direction * 0.22 * k, lo + 0.02, hi - 0.02))
-                self.move({arm: q}, steps=9, settle=2)
-                tilt = self.bottle_tilt()
-                if tilt > best[0]:
-                    best = (tilt, self.ctrl_of(arm).copy())
-                if tilt < 25.0 and k >= 3:
-                    break                         # this direction is not tipping it
-                # re-centre the spout over the mug without undoing the tilt
-                mug_xy = env.body_pos("mug")[:2]
-                err = mug_xy - self.spout()[:2]
-                if np.linalg.norm(err) > 0.012:
-                    tcp = env.tcp(arm)
-                    self.reach(arm, [tcp[0] + err[0], tcp[1] + err[1], tcp[2]],
-                               steps=12, refine=0, tilts=(6.0, 14.0, 24.0, 36.0))
-                if tilt > tilt_target and np.linalg.norm(
-                        env.body_pos("mug")[:2] - self.spout()[:2]) < 0.045:
-                    self.hold(hold_steps)
-                    if env.water_in_mug() >= 1:
-                        return True
-            # wrong direction -- unwind before trying the other one
-            q = self.ctrl_of(arm).copy(); q[3] = start
-            self.move({arm: q}, steps=14, settle=2)
+        # 1 ---------------------------------- arrive above the mug, still upright
+        rim = env.body_pos("mug")[2] + env.params.mug_h
+        self.reach(arm, [over_xy[0], over_xy[1], rim + 0.13], steps=50,
+                   tilts=(10.0, 20.0, 30.0))
 
-        self.move({arm: best[1]}, steps=16)
-        mug_xy = env.body_pos("mug")[:2]
-        err = mug_xy - self.spout()[:2]
-        tcp = env.tcp(arm)
-        self.reach(arm, [tcp[0] + err[0], tcp[1] + err[1], tcp[2]], steps=14, refine=0)
-        self.hold(hold_steps)
-        return env.water_in_mug() >= 1
+        # 2 ------------- walk the approach angle up until the bottle actually tips
+        base = self.ctrl_of(arm).copy()
+        best = (-1.0, None, 1.0)
+        for want in (30.0, 40.0, 50.0, 60.0, 75.0, 88.0):
+            self.aim_spout(arm, self.pour_target(), iters=4, tol=0.010,
+                           tilts=(want,))
+            tilt = self.bottle_tilt()
+            miss = float(np.linalg.norm(self.pour_target() - self.spout()))
+            if tilt > best[0] and miss < 0.035:
+                best = (tilt, self.ctrl_of(arm).copy(), miss)
+            if tilt > tilt_target and miss < 0.025:
+                self.pour_hold(arm, hold_steps, mug_tol=0.012)
+                if env.water_in_mug() >= 1:
+                    self.move({arm: base}, steps=24)
+                    return True
+
+        if best[1] is not None:
+            self.move({arm: best[1]}, steps=14)
+            self.aim_spout(arm, self.pour_target(), iters=2, tol=0.012)
+        self.pour_hold(arm, hold_steps, mug_tol=0.012)
+        ok = env.water_in_mug() >= 1
+        self.move({arm: base}, steps=24)
+        return ok
