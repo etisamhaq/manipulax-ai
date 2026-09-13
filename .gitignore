@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# generated scene files (one per seed, regenerated on every run)
+dinnerbot/sim/assets/_scene_seed*.xml
+
+# large generated artifacts: recorded demonstrations, checkpoints, exported IR,
+# the downloaded VLM, and the per-seed video clips.  The committed evidence is
+# the reports, the exported-model sizes, and the stitched demo reel.
+artifacts/dataset.npz
+artifacts/calib.npz
+artifacts/*.pt
+artifacts/ov/
+artifacts/vlm/
+artifacts/logs/
+artifacts/eval/seed_*.mp4
