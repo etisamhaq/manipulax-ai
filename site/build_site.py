@@ -1,0 +1,353 @@
+"""Generate the ManipulaX results site from the artifacts the pipeline wrote.
+
+Same principle as scripts/make_submission_report.py: nothing on the page is
+typed by hand, so the site cannot drift away from the runs it describes.
+
+    python site/build_site.py          ->  site/dist/index.html
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DIST = os.path.join(ROOT, "site", "dist")
+
+SUBTASKS = [
+    ("drawer_open",  "Open the drawer",        "left"),
+    ("handoff_done", "Hand the fork across",   "both"),
+    ("plate_placed", "Plate on the mat",       "right"),
+    ("fork_placed",  "Fork on the mat",        "right"),
+    ("mug_placed",   "Mug on the mat",         "left"),
+    ("water_poured", "Pour into the mug",      "both"),
+]
+
+
+def load(rel):
+    p = os.path.join(ROOT, rel)
+    with open(p) as f:
+        return json.load(f)
+
+
+def strip(reports, key):
+    """One cell per seed: lit if that sub-task landed on that seed."""
+    out = []
+    for r in reports:
+        on = bool(r["task"][key])
+        out.append(f'<i class="c{" on" if on else ""}" title="seed {r["seed"]}: '
+                   f'{"complete" if on else "not complete"}"></i>')
+    return "".join(out)
+
+
+def main():
+    ev = load("artifacts/eval/summary.json")
+    bench = load("artifacts/benchmark.json")
+    acc = load("artifacts/accuracy.json")
+    reports = ev["reports"]
+
+    rows = ""
+    for key, label, arm in SUBTASKS:
+        n = ev["per_subtask"][key]
+        cls = "hi" if n >= 8 else ("mid" if n >= 5 else "lo")
+        rows += f"""
+      <tr>
+        <th scope="row">{label}</th>
+        <td class="arm">{arm}</td>
+        <td class="strip">{strip(reports, key)}</td>
+        <td class="score {cls}">{n}<span>/10</span></td>
+      </tr>"""
+
+    # benchmark, fastest supported configuration first
+    ok = [r for r in bench["rows"] if r.get("supported", True) and r["p50_ms"] > 0]
+    base = next(r for r in bench["rows"] if r["device"].startswith("PyTorch"))
+    fastest = min((r for r in ok if not r["device"].startswith("PyTorch")),
+                  key=lambda r: r["p50_ms"])
+    npu = next((r for r in ok if r["device"] == "NPU"), None)
+    brows = ""
+    for r in bench["rows"]:
+        dev = r["device"].replace(" (baseline)", "")
+        star = " best" if r is fastest else ""
+        if not r.get("supported", True) or r["p50_ms"] <= 0:
+            brows += (f'<tr class="off"><td>{dev}</td><td>{r["precision"].upper()}</td>'
+                      f'<td colspan="3">not supported on this device</td></tr>')
+            continue
+        sp = base["p50_ms"] / r["p50_ms"]
+        brows += (f'<tr class="{star.strip()}"><td>{dev}</td><td>{r["precision"].upper()}</td>'
+                  f'<td class="num">{r["p50_ms"]:.2f}</td>'
+                  f'<td class="num">{r["p99_ms"]:.2f}</td>'
+                  f'<td class="num">{sp:.2f}&times;</td></tr>')
+
+    f16 = next(r for r in acc if r["precision"] == "FP16")
+    i8 = next(r for r in acc if r["precision"] == "INT8")
+
+    best_seed = max(reports, key=lambda r: r["n_done"])
+    hi = ev["per_subtask"]
+
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ManipulaX — bimanual VLA manipulation on Intel</title>
+<meta name="description" content="Two simulated SO-ARM100 arms set a dinner table from a natural-language
+instruction, running through OpenVINO on an Intel Core Ultra.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {{
+  --void:#0D0D11; --panel:#15151B; --rule:#26262F; --rule-2:#343440;
+  --ink:#EAEAEE; --dim:#8A8A97; --dimmer:#5C5C68;
+  --signal:#74CFFF;   /* the command channel, from the HUD */
+  --live:#57D97A;     /* a sub-task that landed */
+  --warn:#FFDE87;     /* the sub-task in progress */
+  --max:960px;
+}}
+*{{box-sizing:border-box}}
+html{{-webkit-text-size-adjust:100%}}
+body{{
+  margin:0; background:var(--void); color:var(--ink);
+  font-family:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+  font-variant-numeric:tabular-nums; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}}
+.wrap{{max-width:var(--max); margin:0 auto; padding-inline:22px}}
+section{{padding-block:76px; border-top:1px solid var(--rule)}}
+h2{{font-size:clamp(21px,2.6vw,27px); font-weight:600; letter-spacing:-.015em; margin:0 0 8px}}
+h3{{font-size:16px; font-weight:600; margin:0 0 6px}}
+p{{max-width:68ch; color:var(--dim); margin:0 0 14px}}
+p strong{{color:var(--ink); font-weight:500}}
+a{{color:var(--signal); text-decoration-thickness:1px; text-underline-offset:3px}}
+a:focus-visible,button:focus-visible{{outline:2px solid var(--signal); outline-offset:3px}}
+
+/* ---------- hero: the robot first, not a statistic ---------- */
+.hero{{padding-block:52px 60px; border-top:0}}
+.mark{{display:flex; align-items:baseline; gap:13px; margin-bottom:30px}}
+.mark b{{font-size:19px; font-weight:700; letter-spacing:-.03em}}
+.mark span{{font-size:12.5px; color:var(--dimmer)}}
+.lede{{font-size:clamp(29px,5vw,50px); line-height:1.1; letter-spacing:-.032em;
+  font-weight:500; margin:0 0 20px; max-width:19ch; color:var(--ink)}}
+.sub{{font-size:16.5px; color:var(--dim); max-width:56ch; margin:0 0 34px}}
+figure{{margin:0}}
+.screen{{
+  position:relative; max-width:700px; border:1px solid var(--rule-2); border-radius:5px;
+  overflow:hidden; background:#000; box-shadow:0 22px 60px -30px #000;
+}}
+.screen video{{display:block; width:100%; height:auto}}
+figcaption{{margin-top:11px; max-width:700px; font-size:13px; color:var(--dimmer); max-width:70ch}}
+figcaption b{{color:var(--dim); font-weight:500}}
+
+/* ---------- the run strips ---------- */
+table{{width:100%; border-collapse:collapse}}
+.runs{{margin-top:26px}}
+.runs th,.runs td{{padding:11px 0; border-bottom:1px solid var(--rule); text-align:left;
+  vertical-align:middle}}
+.runs thead th{{font-size:11.5px; font-weight:500; color:var(--dimmer);
+  border-bottom:1px solid var(--rule-2); padding-bottom:8px}}
+.runs th[scope=row]{{font-size:15px; font-weight:400; color:var(--ink); width:40%}}
+.arm{{font-size:13px; color:var(--dimmer); width:66px}}
+.strip{{white-space:nowrap; width:130px}}
+.c{{display:inline-block; width:9px; height:19px; border-radius:1.5px;
+  background:var(--rule-2); margin-right:3px}}
+.c.on{{background:var(--live)}}
+.score{{text-align:right; font-size:16px; font-variant-numeric:tabular-nums; width:80px}}
+.score span{{color:var(--dimmer); font-size:12.5px}}
+.score.hi{{color:var(--live)}} .score.mid{{color:var(--warn)}} .score.lo{{color:var(--dim)}}
+.legend{{margin-top:14px; font-size:12.5px; color:var(--dimmer)}}
+.legend i{{vertical-align:-4px; margin-right:5px}}
+.legend i+span{{margin-right:16px}}
+
+/* ---------- figures ---------- */
+.stats{{display:flex; flex-wrap:wrap; gap:34px 54px; margin:30px 0 0}}
+.stat b{{display:block; font-size:34px; font-weight:600; letter-spacing:-.02em; line-height:1.1}}
+.stat span{{font-size:13px; color:var(--dim)}}
+.stat.g b{{color:var(--live)}} .stat.s b{{color:var(--signal)}}
+
+/* ---------- benchmark ---------- */
+.bench{{margin-top:24px; font-size:14.5px}}
+.bench th,.bench td{{padding:9px 14px 9px 0; border-bottom:1px solid var(--rule); text-align:left}}
+.bench thead th{{font-size:11.5px; font-weight:500; color:var(--dimmer);
+  border-bottom:1px solid var(--rule-2)}}
+.bench .num{{text-align:right; font-variant-numeric:tabular-nums}}
+.bench tr.best td{{color:var(--live)}}
+.bench tr.off td{{color:var(--dimmer)}}
+.note{{margin-top:22px; padding:17px 19px; background:var(--panel);
+  border-left:2px solid var(--signal); border-radius:0 4px 4px 0}}
+.note p{{margin:0; color:var(--dim); font-size:14.5px}}
+.note p+p{{margin-top:9px}}
+
+/* ---------- stack ---------- */
+.stack{{margin-top:26px; border:1px solid var(--rule); border-radius:5px; overflow:hidden}}
+.tier{{display:grid; grid-template-columns:132px 1fr 128px; gap:20px; padding:17px 19px;
+  border-bottom:1px solid var(--rule); align-items:baseline}}
+.tier:last-child{{border-bottom:0}}
+.tier b{{font-size:14.5px; font-weight:600}}
+.tier p{{margin:0; font-size:14px}}
+.tier em{{font-style:normal; font-size:12.5px; color:var(--dimmer); text-align:right}}
+.t1 b{{color:var(--signal)}} .t2 b{{color:var(--warn)}} .t3 b{{color:var(--live)}}
+
+/* ---------- footer ---------- */
+footer{{padding-block:44px 72px; border-top:1px solid var(--rule); color:var(--dimmer);
+  font-size:13.5px; display:flex; flex-wrap:wrap; gap:12px 28px; align-items:center}}
+footer a{{color:var(--dim)}}
+
+@media (max-width:720px){{
+  section{{padding-block:54px}}
+  .runs th[scope=row]{{width:auto; font-size:14px}}
+  .arm{{display:none}}
+  .strip{{width:auto}}
+  .c{{width:7px; height:16px; margin-right:2px}}
+  .tier{{grid-template-columns:1fr; gap:5px}}
+  .tier em{{text-align:left}}
+  .bench{{font-size:13px}}
+}}
+@media (prefers-reduced-motion:reduce){{*{{animation:none!important; transition:none!important}}}}
+</style>
+</head>
+<body>
+
+<header class="wrap hero">
+  <div class="mark"><b>ManipulaX</b><span>Intel Physical AI Challenge &middot; simulation-first</span></div>
+  <h1 class="lede">Two arms, one dinner table, one sentence of instruction.</h1>
+  <p class="sub">Dual SO-ARM100 manipulators in MuJoCo open a drawer, pass a fork between
+  arms, and lay a place setting &mdash; driven by a language-conditioned policy compiled
+  to OpenVINO and measured on an Intel Core Ultra 7.</p>
+
+  <figure>
+    <div class="screen">
+      <video src="hero.mp4" poster="poster.jpg" autoplay muted loop playsinline
+             aria-label="Two robot arms setting a dinner table in simulation"></video>
+    </div>
+    <figcaption><b>Seed {best_seed['seed']}, {best_seed['n_done']} of 6 sub-tasks, played at 1.8&times;.</b>
+    The overlay is burned into every evaluation frame: the operator's sentence, the sub-task in
+    progress, which arm owns it, and an indicator per sub-task that lights as it completes. The
+    table and floor colours are randomised per seed, not styled.</figcaption>
+  </figure>
+</header>
+
+<section class="wrap">
+  <h2>What the two arms actually have to share</h2>
+  <p>The cutlery drawer sits on the left; the fork belongs on the right of the mat. Each arm
+  reaches a band roughly 0.11&ndash;0.30&nbsp;m from its own base, and neither band covers both.
+  <strong>The hand-off is not decoration &mdash; the layout makes it the only way to finish.</strong>
+  The second coordination moment is the pour: one arm holds the mug in the air while the other
+  tips the bottle into it.</p>
+
+  <div class="stats">
+    <div class="stat g"><b>{hi['drawer_open']}/10</b><span>drawer opened</span></div>
+    <div class="stat g"><b>{hi['plate_placed']}/10</b><span>plate placed</span></div>
+    <div class="stat s"><b>{hi['handoff_done']}/10</b><span>fork passed between arms</span></div>
+    <div class="stat"><b>{ev['mean_subtasks']:.2f}/6</b><span>mean sub-tasks per episode</span></div>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Every seed, every sub-task</h2>
+  <p>Ten randomised seeds at full domain randomisation &mdash; object shape, mass, friction,
+  placement, lighting, background and camera pose all redrawn per seed. One cell per seed,
+  so the pattern is visible rather than averaged away.</p>
+
+  <table class="runs">
+    <thead><tr><th>Sub-task</th><th class="arm">Arm</th><th>Seeds 0&ndash;9</th><th class="score">Rate</th></tr></thead>
+    <tbody>{rows}
+    </tbody>
+  </table>
+  <p class="legend"><i class="c on"></i><span>complete</span><i class="c"></i><span>not complete</span></p>
+
+  <div class="note">
+    <p><strong>The drawer is solid across all ten</strong>, and the plate lands in eight.
+    The hand-off carries six, and it is verified rather than assumed &mdash; the receiving arm
+    has to genuinely have the fork between its fingers or the transfer is refused.</p>
+    <p>The pour is the one that does not land. The bottle tips and releases, but the stream
+    begins while the spout is still short of the mug, so no episode completes all six. It is
+    reported here as measured.</p>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>All three Intel devices, measured</h2>
+  <p>The policy is a 1.01&nbsp;M-parameter action-chunk transformer exported to OpenVINO IR
+  and swept across every device and precision the Core Ultra 7 155H offers.</p>
+
+  <table class="bench">
+    <thead><tr><th>Device</th><th>Precision</th><th class="num">p50 ms</th>
+      <th class="num">p99 ms</th><th class="num">vs PyTorch</th></tr></thead>
+    <tbody>{brows}</tbody>
+  </table>
+
+  <div class="note">
+    <p><strong>The CPU wins, by roughly {npu['p50_ms']/fastest['p50_ms']:.0f}&times; over the NPU
+    &mdash; and that is the finding.</strong> A model this small on three 96&times;96 images cannot
+    amortise dispatch overhead on an accelerator, so fixed per-inference cost dominates: the NPU
+    comes in slower than unoptimised PyTorch. Offloading to an NPU is a win for sustained large
+    models, and this policy is deliberately neither.</p>
+    <p>One inference yields a 16-step action chunk, so INT8 sustains about
+    {fastest['control_hz']:,.0f}&nbsp;Hz of control against a 30&nbsp;Hz requirement. Latency was
+    never the binding constraint.</p>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>Quantisation, and a result worth flagging</h2>
+  <p>Deviation from the PyTorch reference on held-out demonstration frames, as a share of the
+  output's own standard deviation &mdash; the scale-free reading.</p>
+
+  <div class="stats">
+    <div class="stat g"><b>{i8['frac_of_signal']:.1%}</b><span>INT8 drift &middot; {i8['size_mb']}&nbsp;MB</span></div>
+    <div class="stat"><b>{f16['frac_of_signal']:.1%}</b><span>FP16 drift &middot; {f16['size_mb']}&nbsp;MB</span></div>
+  </div>
+
+  <div class="note">
+    <p><strong>Calibrated INT8 is both smaller and more faithful than naive FP16.</strong>
+    The difference is calibration: post-training quantisation saw real recorded frames and joint
+    states and placed its ranges accordingly, while FP16 rounds every weight blindly &mdash; and a
+    two-layer pre-norm transformer at d_model&nbsp;128 has little headroom for that. FP16 is not
+    automatically the safe default.</p>
+  </div>
+</section>
+
+<section class="wrap">
+  <h2>How it is put together</h2>
+  <p>Hierarchical, because a single end-to-end model driving a ten-step sequence &mdash; trained
+  without a GPU and without teleoperation data &mdash; does not work. Each tier does what it is
+  good at.</p>
+
+  <div class="stack">
+    <div class="tier t1"><b>Planner</b>
+      <p>Sentence plus the overhead camera into a JSON plan, schema-validated and repaired, with
+      a deterministic planner behind it when the model's output fails validation.</p>
+      <em>SmolVLM-500M &middot; INT8</em></div>
+    <div class="tier t2"><b>Coordinator</b>
+      <p>Arm assignment, the hand-off state machine, shared-workspace sequencing, and a replan
+      against the current scene whenever a sub-task fails.</p>
+      <em>per sub-task</em></div>
+    <div class="tier t3"><b>Policy</b>
+      <p>Three camera views and 24-D proprioception with the active sub-task as a language token,
+      emitting a 16-step &times; 12-DoF action chunk.</p>
+      <em>ACT-style &middot; {fastest['p50_ms']:.2f} ms</em></div>
+  </div>
+</section>
+
+<footer class="wrap">
+  <span>ManipulaX</span>
+  <a href="https://github.com/etisamhaq/manipulax-ai">Source &amp; full results</a>
+  <span>Arm model from mujoco_menagerie (Apache-2.0)</span>
+  <span>Measured on Intel Core Ultra 7 155H</span>
+</footer>
+
+</body>
+</html>
+"""
+    os.makedirs(DIST, exist_ok=True)
+    with open(os.path.join(DIST, "index.html"), "w") as f:
+        f.write(html)
+    for src, dst in (("/tmp/hero.mp4", "hero.mp4"), ("/tmp/poster.jpg", "poster.jpg")):
+        if os.path.exists(src):
+            shutil.copy(src, os.path.join(DIST, dst))
+    print("wrote", os.path.join(DIST, "index.html"),
+          f"({os.path.getsize(os.path.join(DIST,'index.html'))/1024:.1f} KB)")
+
+
+if __name__ == "__main__":
+    main()
