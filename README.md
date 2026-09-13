@@ -113,33 +113,39 @@ of the sequence does not hold up. Fork and mug placement each succeed 3/10, and
 complete. Failures compound: an episode that drops the fork also tends to be the
 one whose arm is badly posed for the mug.
 
-### Inference on the Core Ultra 7 155H
+### Inference on the Core Ultra 7 155H — CPU, iGPU and NPU
 
-| precision | p50 | p99 | weights | vs PyTorch-CPU |
+All three Intel devices, every precision, machine idle:
+
+| device | precision | p50 | p99 | vs PyTorch-CPU |
 |---|---|---|---|---|
-| FP32 | 2.04 ms | 2.60 ms | 3.90 MB | 2.9x |
-| FP16 | 2.06 ms | 2.76 ms | 1.95 MB | 2.8x |
-| **INT8** | **1.62 ms** | **1.82 ms** | **1.20 MB** | **3.6x** |
+| PyTorch-CPU | FP32 | 4.76 ms | 119.95 ms | 1.00x |
+| **CPU** | **INT8** | **0.89 ms** | **1.08 ms** | **5.38x** |
+| CPU | FP16 | 1.15 ms | 1.43 ms | 4.14x |
+| CPU | FP32 | 1.23 ms | 1.82 ms | 3.86x |
+| GPU (Arc iGPU) | FP16 | 2.67 ms | 7.64 ms | 1.79x |
+| NPU (AI Boost) | FP16 | 20.20 ms | 22.63 ms | 0.24x |
+| NPU (AI Boost) | FP32 | 20.06 ms | 22.48 ms | 0.24x |
+| GPU | FP32 / INT8 | not supported | | |
+| NPU | INT8 | not supported | | |
 
-One inference produces a 16-step action chunk, so INT8 sustains ~9900 Hz of
-control — about 300x more than the 30 Hz the task needs. Latency is not the
-binding constraint here; task success is.
+**The CPU wins, and that is the interesting part.** A 1.01 M-parameter model on
+three 96x96 images is far too small to amortise dispatch overhead on either
+accelerator: the NPU is ~23x *slower* than the CPU and slower than plain
+PyTorch, because a fixed per-inference cost dominates a workload this size. The
+iGPU lands in between. Offloading to an NPU is not automatically a win — it is
+a win for sustained, large models, and this policy is deliberately neither.
 
-Measured on **CPU only** — the iGPU and NPU are not yet visible to OpenVINO on
-this machine (see `scripts/setup_intel_runtime.sh`).
+Two refusals are worth recording rather than hiding. The **iGPU rejects FP32 and
+INT8** (`ProgramBuilder build failed ... shape_type == dynamic_shape`) and takes
+only FP16. The **NPU rejects the INT8 IR** in its compiler — NNCF emits 128
+per-axis scales against a quantised dimension of 32, which `vpux-compiler`
+refuses. Per-tensor quantisation, or a quantisation-aware retrain, would be the
+route to INT8 on the NPU.
 
-| artifact | what it holds |
-|---|---|
-| `SUBMISSION.md` | one-page summary: deliverables, task success, benchmark, fidelity |
-| `artifacts/eval/report.md` | per-sub-task success across the 10 randomised seeds |
-| `artifacts/eval/demo_all_seeds.mp4` | the demonstration video (plus `seed_0NN.mp4` per seed) |
-| `artifacts/benchmark.md` | device x precision latency / throughput sweep |
-| `artifacts/accuracy.md` | how far each quantised precision drifts from PyTorch |
-
-The HUD burned into every video frame shows the natural-language command, the
-sub-task in progress and which arm owns it, the inference device and latency,
-and a row of indicators that light up as each sub-task completes — so the video
-evidences the table rather than merely accompanying it.
+So the deployment answer for *this* model is **CPU INT8: 0.89 ms, 1.20 MB,
+~18 000 Hz of control against a 30 Hz requirement** — a conclusion that is only
+defensible because all three devices were actually measured.
 
 ---
 

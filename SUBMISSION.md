@@ -30,16 +30,22 @@ Domain randomisation on; seeds `[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]`.
 
 ## Intel inference benchmark
 
-OpenVINO `2026.3.1-22476-759c5a6ab8c-releases/2026/3`, devices reported: `CPU`.
+OpenVINO `2026.3.1-22476-759c5a6ab8c-releases/2026/3`, devices reported: `CPU, GPU, NPU`.
 
 | device | precision | p50 ms | p99 ms | inf/s | control Hz |
 |---|---|---|---|---|---|
-| PyTorch-CPU (baseline) | FP32 | 5.85 | 17.88 | 170.9 | 2733.9 |
-| CPU | FP32 | 2.04 | 2.60 | 489.8 | 7837.1 |
-| CPU | FP16 | 2.06 | 2.76 | 485.6 | 7768.9 |
-| CPU | INT8 | 1.62 | 1.82 | 619.0 | 9903.4 |
+| PyTorch-CPU (baseline) | FP32 | 4.76 | 119.95 | 209.9 | 3358.0 |
+| CPU | FP32 | 1.23 | 1.82 | 811.3 | 12980.8 |
+| GPU | FP32 | — | — | — | not supported |
+| NPU | FP32 | 20.06 | 22.48 | 49.8 | 797.6 |
+| CPU | FP16 | 1.15 | 1.43 | 869.0 | 13904.1 |
+| GPU | FP16 | 2.67 | 7.64 | 375.1 | 6001.3 |
+| NPU | FP16 | 20.20 | 22.63 | 49.5 | 792.0 |
+| CPU | INT8 | 0.89 | 1.08 | 1130.2 | 18083.1 |
+| GPU | INT8 | — | — | — | not supported |
+| NPU | INT8 | — | — | — | not supported |
 
-- best OpenVINO configuration: **CPU INT8**, 3.62x faster than the PyTorch-CPU baseline
+- best OpenVINO configuration: **CPU INT8**, 5.38x faster than the PyTorch-CPU baseline
 
 ## Quantisation fidelity
 

@@ -82,10 +82,22 @@ On top of that the expert is closed-loop rather than open-loop:
 
 | component | precision | device | rationale |
 |---|---|---|---|
-| policy vision + transformer | INT8 (NNCF PTQ) | NPU / iGPU | static shapes, fixed batch 1, no data-dependent control flow — the NPU's requirements drove the model design |
-| policy (fallback) | FP16 | iGPU | when an op is unsupported on NPU |
+| policy vision + transformer | INT8 (NNCF PTQ) | **CPU** | measured fastest of the three by 3x; see below |
+| policy (alternative) | FP16 | iGPU | the only precision the iGPU accepts for this graph |
 | planner VLM (SmolVLM-500M) | INT8 weights | iGPU / CPU | called ~once per sub-task, so latency is off the control path |
 | MuJoCo physics + rendering | — | CPU + iGPU (EGL) | rendering goes through the Intel Arc iGPU |
 
 Calibration data for the INT8 policy comes from the recorded demonstrations, so
 the quantiser sees the real distribution of camera frames and joint states.
+
+**Why the CPU and not the NPU.** The model was built to NPU constraints — static
+shapes, fixed batch 1, no data-dependent control flow — and it does compile and
+run there. It is simply slower: 20.1 ms on the NPU against 0.89 ms on the CPU,
+which is slower even than unoptimised PyTorch. At 1.01 M parameters the fixed
+dispatch cost dominates, and an accelerator built for sustained large models has
+nothing to amortise it against. The iGPU sits between the two at 2.67 ms and
+accepts only FP16 for this graph. The NPU additionally refuses the INT8 IR:
+NNCF emits 128 per-axis scales against a quantised dimension of 32 and
+`vpux-compiler` rejects it, so per-tensor quantisation or a QAT retrain would be
+needed to try INT8 there. Measuring all three is what makes "ship it on the CPU"
+an answer rather than an assumption.
