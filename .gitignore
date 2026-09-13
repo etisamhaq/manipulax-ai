@@ -16,3 +16,5 @@ artifacts/ov/
 artifacts/vlm/
 artifacts/logs/
 artifacts/eval/seed_*.mp4
+# ...except the best single run, kept as a short demo clip
+!artifacts/eval/seed_004.mp4
