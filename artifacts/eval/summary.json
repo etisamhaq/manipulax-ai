@@ -1,0 +1,178 @@
+{
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "n": 10,
+  "per_subtask": {
+    "drawer_open": 10,
+    "handoff_done": 6,
+    "fork_placed": 3,
+    "plate_placed": 8,
+    "mug_placed": 3,
+    "water_poured": 0
+  },
+  "full_success": 0,
+  "mean_subtasks": 3.0,
+  "mean_subtask_rate": 0.5,
+  "reports": [
+    {
+      "seed": 0,
+      "n_done": 3,
+      "water_in_mug": 0,
+      "steps": 3242,
+      "wall_s": 187.6,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": false,
+        "plate_placed": true,
+        "mug_placed": false,
+        "water_poured": false,
+        "handoff_done": true
+      }
+    },
+    {
+      "seed": 1,
+      "n_done": 4,
+      "water_in_mug": 0,
+      "steps": 4154,
+      "wall_s": 157.3,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": true,
+        "plate_placed": false,
+        "mug_placed": true,
+        "water_poured": false,
+        "handoff_done": true
+      }
+    },
+    {
+      "seed": 2,
+      "n_done": 4,
+      "water_in_mug": 0,
+      "steps": 3620,
+      "wall_s": 48.7,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": false,
+        "plate_placed": true,
+        "mug_placed": true,
+        "water_poured": false,
+        "handoff_done": true
+      }
+    },
+    {
+      "seed": 3,
+      "n_done": 3,
+      "water_in_mug": 0,
+      "steps": 3258,
+      "wall_s": 42.0,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": false,
+        "plate_placed": true,
+        "mug_placed": false,
+        "water_poured": false,
+        "handoff_done": true
+      }
+    },
+    {
+      "seed": 4,
+      "n_done": 5,
+      "water_in_mug": 0,
+      "steps": 3169,
+      "wall_s": 43.9,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": true,
+        "plate_placed": true,
+        "mug_placed": true,
+        "water_poured": false,
+        "handoff_done": true
+      }
+    },
+    {
+      "seed": 5,
+      "n_done": 4,
+      "water_in_mug": 0,
+      "steps": 3062,
+      "wall_s": 38.2,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": true,
+        "plate_placed": true,
+        "mug_placed": false,
+        "water_poured": false,
+        "handoff_done": true
+      }
+    },
+    {
+      "seed": 6,
+      "n_done": 2,
+      "water_in_mug": 0,
+      "steps": 5604,
+      "wall_s": 58.0,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": false,
+        "plate_placed": true,
+        "mug_placed": false,
+        "water_poured": false,
+        "handoff_done": false
+      }
+    },
+    {
+      "seed": 7,
+      "n_done": 1,
+      "water_in_mug": 0,
+      "steps": 3920,
+      "wall_s": 41.5,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": false,
+        "plate_placed": false,
+        "mug_placed": false,
+        "water_poured": false,
+        "handoff_done": false
+      }
+    },
+    {
+      "seed": 8,
+      "n_done": 2,
+      "water_in_mug": 0,
+      "steps": 3067,
+      "wall_s": 35.5,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": false,
+        "plate_placed": true,
+        "mug_placed": false,
+        "water_poured": false,
+        "handoff_done": false
+      }
+    },
+    {
+      "seed": 9,
+      "n_done": 2,
+      "water_in_mug": 0,
+      "steps": 4257,
+      "wall_s": 42.9,
+      "task": {
+        "drawer_open": true,
+        "fork_placed": false,
+        "plate_placed": true,
+        "mug_placed": false,
+        "water_poured": false,
+        "handoff_done": false
+      }
+    }
+  ]
+}
